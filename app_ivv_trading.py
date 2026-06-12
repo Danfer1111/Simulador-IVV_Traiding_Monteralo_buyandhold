@@ -232,7 +232,7 @@ def display_paper_trading(
     sessions = output["sessions"]
     events = output["events"]
     summary = output["summary"]
-    theoretical = output["theoretical"]
+    theoretical = output.get("theoretical")
 
     st.divider()
     st.header("Paper trading operativo")
@@ -264,40 +264,46 @@ def display_paper_trading(
         "DETENIDO" if summary["risk_halted"] else "Activo",
     )
 
-    st.subheader("Resultado ejecutable frente al maximo teorico")
-    st.caption(
-        "El maximo teorico usa informacion futura para elegir la mejor compra y "
-        "la mejor venta posterior. Incluye los mismos costos, spread, "
-        "deslizamiento y limite de exposicion, pero no es ejecutable en tiempo real."
-    )
-    comparison1, comparison2, comparison3, comparison4 = st.columns(4)
-    comparison1.metric(
-        "Beneficio ejecutable (USD)",
-        f"USD {summary['actual_profit']:,.2f}",
-    )
-    comparison2.metric(
-        "Beneficio teorico perfecto (USD)",
-        f"USD {summary['theoretical_profit']:,.2f}",
-    )
-    comparison3.metric(
-        "Movimiento capturado (%)",
-        percentage(summary["capture_ratio"]),
-    )
-    if theoretical["trade_available"]:
-        comparison4.metric(
-            "Compra / venta teoricas",
-            f"Sesion {theoretical['entry_session']} / "
-            f"{theoretical['exit_session']}",
-        )
-        st.info(
-            f"Con conocimiento futuro perfecto se compraria cerca de "
-            f"**USD {theoretical['entry_fill_price']:,.2f}** en la sesion "
-            f"**{theoretical['entry_session']}** y se venderia cerca de "
-            f"**USD {theoretical['exit_fill_price']:,.2f}** en la sesion "
-            f"**{theoretical['exit_session']}**."
+    if theoretical is None:
+        st.warning(
+            "El motor de paper trading cargado en memoria es una version "
+            "anterior. Reinicia Streamlit para mostrar la comparacion teorica."
         )
     else:
-        comparison4.metric("Compra / venta teoricas", "Sin operacion rentable")
+        st.subheader("Resultado ejecutable frente al maximo teorico")
+        st.caption(
+            "El maximo teorico usa informacion futura para elegir la mejor compra y "
+            "la mejor venta posterior. Incluye los mismos costos, spread, "
+            "deslizamiento y limite de exposicion, pero no es ejecutable en tiempo real."
+        )
+        comparison1, comparison2, comparison3, comparison4 = st.columns(4)
+        comparison1.metric(
+            "Beneficio ejecutable (USD)",
+            f"USD {summary['actual_profit']:,.2f}",
+        )
+        comparison2.metric(
+            "Beneficio teorico perfecto (USD)",
+            f"USD {summary['theoretical_profit']:,.2f}",
+        )
+        comparison3.metric(
+            "Movimiento capturado (%)",
+            percentage(summary["capture_ratio"]),
+        )
+        if theoretical["trade_available"]:
+            comparison4.metric(
+                "Compra / venta teoricas",
+                f"Sesion {theoretical['entry_session']} / "
+                f"{theoretical['exit_session']}",
+            )
+            st.info(
+                f"Con conocimiento futuro perfecto se compraria cerca de "
+                f"**USD {theoretical['entry_fill_price']:,.2f}** en la sesion "
+                f"**{theoretical['entry_session']}** y se venderia cerca de "
+                f"**USD {theoretical['exit_fill_price']:,.2f}** en la sesion "
+                f"**{theoretical['exit_session']}**."
+            )
+        else:
+            comparison4.metric("Compra / venta teoricas", "Sin operacion rentable")
 
     left, right = st.columns(2)
     with left:
@@ -337,7 +343,7 @@ def display_paper_trading(
                     name="Venta ejecutada",
                 )
             )
-        if theoretical["trade_available"]:
+        if theoretical is not None and theoretical["trade_available"]:
             fig.add_trace(
                 go.Scatter(
                     x=[
