@@ -77,16 +77,16 @@ def display_calibration(calibration) -> None:
     st.subheader("Calibracion utilizada")
     col1, col2, col3, col4 = st.columns(4)
     col1.metric(
-        "Retorno historico anual",
+        "Retorno historico anual (%)",
         percentage(calibration.diagnostics["annual_return"]),
     )
     col2.metric(
-        "Volatilidad anual",
+        "Volatilidad anual (%)",
         percentage(calibration.diagnostics["annual_volatility"]),
     )
-    col3.metric("Student-t df", f"{calibration.student_df:.2f}")
+    col3.metric("Student-t df (sin unidad)", f"{calibration.student_df:.2f}")
     col4.metric(
-        "Correlacion IVV / USD-MXN",
+        "Correlacion IVV / USD-MXN (-1 a 1)",
         f"{calibration.diagnostics['ivv_fx_correlation']:.2f}",
     )
     st.caption(
@@ -104,7 +104,7 @@ def display_backtest(results, summary, confidence) -> None:
         f"Cobertura precio ({confidence:.0%})",
         percentage(summary["price_coverage"]),
     )
-    col2.metric("Error mediano MAPE", percentage(summary["price_mape"]))
+    col2.metric("Error mediano MAPE (%)", percentage(summary["price_mape"]))
     col3.metric(
         "Estrategia supera buy-and-hold",
         percentage(summary["strategy_outperformance"]),
@@ -189,6 +189,21 @@ def display_backtest(results, summary, confidence) -> None:
             "actual_buy_hold_return",
         ]
     ].copy()
+    table = table.rename(
+        columns={
+            "origin": "Inicio de prueba",
+            "end": "Fin de prueba",
+            "actual_final_price": "Precio observado (USD)",
+            "price_p05": "Precio P5 (USD)",
+            "price_p50": "Precio mediano (USD)",
+            "price_p95": "Precio P95 (USD)",
+            "price_covered": "Dentro de P5-P95",
+            "actual_strategy_return": "Retorno estrategia (%)",
+            "actual_buy_hold_return": "Retorno comprar y mantener (%)",
+        }
+    )
+    for column in ("Retorno estrategia (%)", "Retorno comprar y mantener (%)"):
+        table[column] = table[column].map(percentage)
     st.dataframe(table, use_container_width=True, hide_index=True)
 
 
@@ -326,7 +341,7 @@ def display_aggressive_trading(prices, strategy) -> None:
             "stop_loss_exits": "Stop-loss",
             "trailing_exits": "Trailing stop",
         }
-    ).rename("salidas")
+    ).rename("Cantidad de salidas")
     st.dataframe(exit_table.to_frame(), use_container_width=True)
     st.warning(
         "El dia del maximo posterior no es una senal disponible en tiempo real. "
@@ -336,8 +351,13 @@ def display_aggressive_trading(prices, strategy) -> None:
 
 def display_user_guide() -> None:
     with st.expander("Manual de uso y glosario", expanded=False):
-        start_tab, results_tab, glossary_tab = st.tabs(
-            ("Empieza aqui", "Como leer los resultados", "Glosario")
+        start_tab, advanced_tab, results_tab, glossary_tab = st.tabs(
+            (
+                "Empieza aqui",
+                "Modo avanzado",
+                "Como leer los resultados",
+                "Glosario",
+            )
         )
 
         with start_tab:
@@ -377,6 +397,61 @@ def display_user_guide() -> None:
                 "posibilidades, no para prometer ganancias."
             )
 
+        with advanced_tab:
+            st.markdown(
+                """
+                **Que significa cada unidad**
+
+                - **% (porcentaje):** una parte de cada 100. Por ejemplo, 6%
+                  significa 6 por cada 100. Un retorno de -4% indica perdida.
+                - **USD:** dolares estadounidenses. Se usa para precios, capital,
+                  ganancias y perdidas.
+                - **MXN:** pesos mexicanos. Cuando aparezca, indica que el valor
+                  fue convertido usando el tipo de cambio USD/MXN simulado.
+                - **pb (puntos base):** costo porcentual pequeño. `100 pb = 1%`,
+                  `10 pb = 0.10%` y `1 pb = 0.01%`.
+                - **Sesion:** un dia de mercado abierto. `63 sesiones` son
+                  aproximadamente tres meses, no 63 dias de calendario.
+                - **Trayectoria:** un futuro posible simulado. No representa
+                  dinero, dias ni porcentaje; es un conteo de escenarios.
+                - **Años:** cantidad de historia usada para calibrar el modelo.
+                - **-1 a 1:** escala de correlacion. No es porcentaje.
+                - **Sin unidad:** numero tecnico que no representa dinero ni
+                  porcentaje, como Student-t df o la semilla.
+
+                **Controles de Mercado**
+
+                - **Precio inicial IVV (USD):** precio de una participacion al
+                  comenzar la simulacion.
+                - **Rendimiento anual base (%):** crecimiento promedio supuesto
+                  para un año. La simulacion dura solo tres meses.
+                - **Volatilidad anual (%):** intensidad de los movimientos del
+                  precio. Un valor mayor significa mas incertidumbre.
+                - **Inflacion y tasa de interes (% anual):** supuestos economicos
+                  expresados para un año completo.
+                - **Petroleo y USD/MXN (% a 3 meses):** cambio esperado durante
+                  el mismo horizonte de la simulacion.
+
+                **Controles de Estrategia**
+
+                - **Caidas para comprar (%):** descensos desde el precio de
+                  referencia que activan compras. `3, 6, 9` significa comprar
+                  cuando la caida alcance 3%, 6% y 9%.
+                - **Venta sobre costo promedio (%):** ganancia requerida para
+                  vender despues de promediar todas las compras.
+                - **Costo por operacion (pb):** comision o friccion aplicada a
+                  cada compra y venta.
+
+                **Trading agresivo**
+
+                - **Capital (USD):** dinero inicial simulado.
+                - **Caida, take-profit, stop-loss y trailing stop (%):** todos son
+                  porcentajes respecto al precio de entrada o al maximo alcanzado.
+                - **Maximo de operaciones:** cantidad de ciclos de compra y venta;
+                  no es dinero ni porcentaje.
+                """
+            )
+
         with results_tab:
             st.markdown(
                 """
@@ -399,6 +474,13 @@ def display_user_guide() -> None:
                   La franja muestra un rango amplio de futuros posibles.
                 - **P5-P95:** 90 de cada 100 simulaciones quedaron dentro de ese
                   rango; 10 quedaron fuera.
+                - **Precio final:** se muestra en USD por participacion de IVV.
+                - **Retornos:** se muestran como porcentaje, no como dolares. Un
+                  retorno de 5% sobre USD 1,000 equivale a USD 50 antes de costos.
+                - **Capital y beneficio:** se muestran en USD.
+                - **Probabilidades:** se muestran como porcentaje. 70% significa
+                  que ocurrio en aproximadamente 70 de cada 100 simulaciones.
+                - **Cantidad de salidas:** es un conteo de operaciones, no dinero.
 
                 **Regla sencilla:** no mires solamente la posible ganancia. Revisa
                 tambien cuantos casos perdieron dinero y cuantas posiciones
@@ -421,10 +503,13 @@ def display_user_guide() -> None:
                   resultados simulados. No es una garantia.
                 - **Volatilidad:** medida de la variacion esperada del precio. Un
                   valor mayor suele producir rangos de resultados mas amplios.
+                  En esta app se expresa como porcentaje anual.
                 - **Student-t:** distribucion usada para representar movimientos
                   extremos con mayor frecuencia que una distribucion normal.
+                - **Student-t df:** parametro tecnico sin unidad. Valores menores
+                  representan una mayor presencia de movimientos extremos.
                 - **Drawdown o caida:** descenso desde un maximo previo que puede
-                  activar una compra.
+                  activar una compra; se expresa como porcentaje.
                 - **Costo promedio:** precio medio pagado por las compras
                   ejecutadas.
                 - **Take-profit:** venta al alcanzar una utilidad definida.
@@ -438,6 +523,12 @@ def display_user_guide() -> None:
                 - **Semilla:** numero que permite repetir la misma secuencia
                   aleatoria y comparar configuraciones.
                 - **Puntos base (pb):** unidad de costos; 100 pb equivalen a 1%.
+                - **Correlacion:** relacion entre dos movimientos, medida de -1 a
+                  1. Cerca de 1 se mueven juntos; cerca de -1, en sentido opuesto.
+                - **MAPE:** error promedio expresado como porcentaje. Un valor
+                  menor indica que el precio estimado estuvo mas cerca del real.
+                - **R2:** proporcion explicada por el modelo, mostrada como
+                  porcentaje. No representa rendimiento ni probabilidad.
                 - **Posicion abierta:** compra que no alcanzo una regla de venta
                   antes de terminar el horizonte.
                 """
@@ -563,27 +654,66 @@ def main() -> None:
             run_backtest = False
         else:
             expected_return = st.slider(
-                "Rendimiento anual base", -20.0, 30.0, 8.0, 0.5
+                "Rendimiento anual base (%)",
+                -20.0,
+                30.0,
+                8.0,
+                0.5,
+                help="Supuesto porcentual para un año completo.",
             )
-            volatility = st.slider("Volatilidad anual", 5.0, 60.0, 18.0, 0.5)
-            inflation = st.slider("Inflacion anual EE.UU.", 0.0, 15.0, 3.0, 0.1)
+            volatility = st.slider(
+                "Volatilidad anual (%)",
+                5.0,
+                60.0,
+                18.0,
+                0.5,
+                help="Variacion esperada anual. Mas volatilidad implica mas riesgo.",
+            )
+            inflation = st.slider(
+                "Inflacion anual EE.UU. (%)",
+                0.0,
+                15.0,
+                3.0,
+                0.1,
+                help="Inflacion supuesta para un año completo.",
+            )
             interest_rate = st.slider(
-                "Tasa de interes de referencia", 0.0, 15.0, 4.0, 0.1
+                "Tasa de interes de referencia (% anual)",
+                0.0,
+                15.0,
+                4.0,
+                0.1,
             )
             oil_change = st.slider(
-                "Cambio esperado petroleo a 3 meses", -40.0, 80.0, 0.0, 1.0
+                "Cambio esperado petroleo (% a 3 meses)",
+                -40.0,
+                80.0,
+                0.0,
+                1.0,
             )
             fx_change = st.slider(
-                "Cambio esperado USD/MXN a 3 meses", -20.0, 30.0, 0.0, 0.5
+                "Cambio esperado USD/MXN (% a 3 meses)",
+                -20.0,
+                30.0,
+                0.0,
+                0.5,
             )
 
             st.header("Estrategia")
-            levels_text = st.text_input("Caidas para comprar (%)", "3, 6, 9, 12")
+            levels_text = st.text_input(
+                "Caidas que activan compras (%)",
+                "3, 6, 9, 12",
+                help="Porcentajes separados por comas, medidos desde el precio inicial.",
+            )
             take_profit = st.slider(
-                "Venta sobre costo promedio", 1.0, 20.0, 6.0, 0.5
+                "Venta sobre costo promedio (%)", 1.0, 20.0, 6.0, 0.5
             )
             transaction_cost = st.number_input(
-                "Costo por operacion (pb)", min_value=0.0, value=10.0, step=1.0
+                "Costo por operacion (pb)",
+                min_value=0.0,
+                value=10.0,
+                step=1.0,
+                help="100 pb equivalen a 1%; 10 pb equivalen a 0.10%.",
             )
 
             st.header("Simulacion")
@@ -597,18 +727,30 @@ def main() -> None:
                 ),
             )
             student_df = st.slider(
-                "Grados de libertad Student-t", 3.0, 20.0, 5.0, 0.5
+                "Grados de libertad Student-t (sin unidad)",
+                3.0,
+                20.0,
+                5.0,
+                0.5,
             )
-            seed = st.number_input("Semilla", min_value=0, value=42, step=1)
+            seed = st.number_input(
+                "Semilla aleatoria (sin unidad)",
+                min_value=0,
+                value=42,
+                step=1,
+                help="Permite repetir exactamente la misma simulacion.",
+            )
             st.header("Calibracion")
             use_calibration = st.checkbox(
                 "Usar calibracion historica",
                 value=True,
                 help="Reemplaza retorno, volatilidad, colas y escenarios manuales.",
             )
-            training_years = st.slider("Ventana historica (anos)", 2, 10, 5, 1)
+            training_years = st.slider(
+                "Ventana historica (anos)", 2, 10, 5, 1
+            )
             backtest_windows = st.slider(
-                "Ventanas walk-forward", 4, 24, 12, 1
+                "Ventanas walk-forward (cantidad)", 4, 24, 12, 1
             )
             st.header("Trading agresivo")
             aggressive_capital = st.number_input(
@@ -623,19 +765,19 @@ def main() -> None:
                 horizontal=True,
             )
             aggressive_drawdown = st.slider(
-                "Caida para entrar", 1.0, 20.0, 4.0, 0.5
+                "Caida para entrar (%)", 1.0, 20.0, 4.0, 0.5
             )
             aggressive_take_profit = st.slider(
-                "Take-profit agresivo", 1.0, 25.0, 6.0, 0.5
+                "Take-profit agresivo (%)", 1.0, 25.0, 6.0, 0.5
             )
             aggressive_stop_loss = st.slider(
-                "Stop-loss agresivo", 1.0, 20.0, 5.0, 0.5
+                "Stop-loss agresivo (%)", 1.0, 20.0, 5.0, 0.5
             )
             aggressive_trailing = st.slider(
-                "Trailing stop", 0.5, 15.0, 2.5, 0.5
+                "Trailing stop (%)", 0.5, 15.0, 2.5, 0.5
             )
             aggressive_max_trades = st.slider(
-                "Maximo de operaciones", 1, 8, 3, 1
+                "Maximo de operaciones (cantidad)", 1, 8, 3, 1
             )
             run = st.button(
                 "Ejecutar simulacion", type="primary", use_container_width=True
@@ -774,10 +916,10 @@ def main() -> None:
         )
         if app_mode == "Basico"
         else (
-            "Retorno mediano estrategia USD",
-            "Probabilidad de utilidad",
-            "Probabilidad de activar compra",
-            "Posicion abierta al final",
+            "Retorno mediano estrategia (%)",
+            "Probabilidad de utilidad (%)",
+            "Probabilidad de activar compra (%)",
+            "Posicion abierta al final (%)",
         )
     )
     col1, col2, col3, col4 = st.columns(4)
@@ -928,6 +1070,14 @@ def main() -> None:
                 percentiles[column] = percentiles[column].map(
                     lambda value: f"${value:,.2f}"
                 )
+        percentiles = percentiles.rename(
+            columns={
+                "strategy_return_usd": "Retorno estrategia en USD (%)",
+                "strategy_return_mxn": "Retorno estrategia en MXN (%)",
+                "buy_hold_return_usd": "Retorno comprar y mantener (%)",
+                "final_price": "Precio final IVV (USD)",
+            }
+        )
         st.dataframe(percentiles, use_container_width=True)
 
         st.subheader("Resultados por escenario")
@@ -943,6 +1093,19 @@ def main() -> None:
             scenarios[column] = scenarios[column].map(percentage)
         scenarios["median_final_price"] = scenarios["median_final_price"].map(
             lambda value: f"${value:,.2f}"
+        )
+        scenarios = scenarios.rename(
+            columns={
+                "scenario": "Escenario",
+                "weight": "Peso del escenario (%)",
+                "paths": "Trayectorias (cantidad)",
+                "median_strategy_usd": "Retorno mediano en USD (%)",
+                "probability_profit": "Probabilidad de utilidad (%)",
+                "probability_buy": "Probabilidad de compra (%)",
+                "probability_sale": "Probabilidad de venta (%)",
+                "probability_open": "Posicion abierta al final (%)",
+                "median_final_price": "Precio final mediano (USD)",
+            }
         )
         st.dataframe(scenarios, use_container_width=True, hide_index=True)
 
