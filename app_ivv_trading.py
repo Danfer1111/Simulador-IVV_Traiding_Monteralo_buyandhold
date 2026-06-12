@@ -336,48 +336,85 @@ def display_aggressive_trading(prices, strategy) -> None:
 
 def display_user_guide() -> None:
     with st.expander("Manual de uso y glosario", expanded=False):
-        manual_tab, glossary_tab = st.tabs(("Manual basico", "Glosario"))
+        start_tab, results_tab, glossary_tab = st.tabs(
+            ("Empieza aqui", "Como leer los resultados", "Glosario")
+        )
 
-        with manual_tab:
+        with start_tab:
             st.markdown(
                 """
-                1. **Configure el mercado.** Revise el precio inicial de IVV y
-                   ajuste los supuestos economicos. Si activa la calibracion
-                   historica, el modelo sustituye varios supuestos manuales con
-                   estimaciones obtenidas de datos recientes.
-                2. **Defina la estrategia.** Escriba las caidas que activan cada
-                   compra, separadas por comas. Por ejemplo, `3, 6, 9, 12`
-                   divide el capital en cuatro compras iguales.
-                3. **Ajuste la simulacion.** Use 20,000 trayectorias para una
-                   consulta normal. La misma semilla produce resultados
-                   reproducibles cuando los demas parametros no cambian.
-                4. **Ejecute la simulacion.** El boton principal genera escenarios
-                   de 63 sesiones y compara la estrategia escalonada contra
-                   comprar y mantener IVV desde hoy.
-                5. **Interprete los resultados.** Observe la mediana, la
-                   probabilidad de utilidad, el intervalo P5-P95 y la frecuencia
-                   con la que se activan compras o quedan posiciones abiertas.
-                6. **Pruebe el backtesting.** Este boton evalua ventanas historicas
-                   sin usar informacion futura. Sirve para medir cobertura y
-                   errores del modelo, no para garantizar resultados posteriores.
-                7. **Revise el trading agresivo.** Configure capital, entrada y
-                   salidas. Esta seccion usa el capital completo en cada ciclo y
-                   por ello puede mostrar mayor variacion y riesgo.
+                Esta pagina **no compra ni vende nada**. Solo crea miles de futuros
+                posibles para ayudarte a entender el riesgo de una estrategia.
+
+                **La forma mas facil de usarla**
+
+                1. En la barra izquierda elige **Basico**.
+                2. Revisa el precio de IVV. La pagina intenta obtener el precio
+                   mas reciente automaticamente.
+                3. Elige un perfil:
+                   **Conservador** espera caidas mayores,
+                   **Moderado** usa valores intermedios y
+                   **Agresivo** compra ante caidas menores y acepta mas riesgo.
+                4. Presiona **Ejecutar simulacion** una sola vez.
+                5. Espera a que desaparezca el mensaje de carga.
+                6. Empieza leyendo las cuatro tarjetas grandes. Despues revisa
+                   las graficas.
+
+                **No sabes que elegir?** Empieza con **Moderado**. Cambia solamente
+                un ajuste cada vez para entender que efecto tiene.
+
+                **Modo Avanzado**
+
+                Usalo cuando ya conozcas conceptos como volatilidad, percentiles,
+                costos de operacion y stop-loss. Este modo permite modificar todos
+                los supuestos, ejecutar pruebas historicas y configurar trading
+                agresivo.
                 """
             )
-            st.info(
-                "Sugerencia: cambie un parametro a la vez y compare los "
-                "resultados con la misma semilla."
+
+            st.warning(
+                "Una simulacion no sabe que ocurrira manana. Sirve para explorar "
+                "posibilidades, no para prometer ganancias."
+            )
+
+        with results_tab:
+            st.markdown(
+                """
+                **Lee primero estas cuatro tarjetas**
+
+                - **Retorno mediano:** el resultado que queda en medio de todos
+                  los futuros simulados. No es una ganancia garantizada.
+                - **Probabilidad de utilidad:** cuantas simulaciones terminaron
+                  con ganancia. Por ejemplo, 62% significa 62 de cada 100.
+                - **Probabilidad de activar compra:** cuantas veces el precio cayo
+                  lo suficiente para que la estrategia comprara.
+                - **Posicion abierta al final:** veces en que se compro, pero no se
+                  alcanzo la meta de venta antes de terminar los tres meses.
+
+                **Despues mira las graficas**
+
+                - **Distribucion de resultados:** muestra resultados buenos y
+                  malos. Cuanto mas extendida sea, mayor fue la incertidumbre.
+                - **Abanico de precios:** la linea central es el resultado medio.
+                  La franja muestra un rango amplio de futuros posibles.
+                - **P5-P95:** 90 de cada 100 simulaciones quedaron dentro de ese
+                  rango; 10 quedaron fuera.
+
+                **Regla sencilla:** no mires solamente la posible ganancia. Revisa
+                tambien cuantos casos perdieron dinero y cuantas posiciones
+                quedaron abiertas.
+                """
             )
 
         with glossary_tab:
             st.markdown(
                 """
-                - **IVV:** ETF que busca seguir el indice S&P 500.
+                - **IVV:** fondo que se compra y vende como una accion y busca
+                  seguir a 500 empresas grandes de Estados Unidos.
                 - **Trayectoria:** posible evolucion simulada del precio durante
-                  las 63 sesiones del horizonte.
+                  aproximadamente tres meses.
                 - **Monte Carlo:** metodo que repite miles de escenarios
-                  aleatorios para estimar un rango de resultados.
+                  posibles. No es una prediccion exacta.
                 - **Retorno mediano:** resultado central; la mitad de las
                   trayectorias queda por encima y la otra mitad por debajo.
                 - **P5-P95:** intervalo que contiene el 90% central de los
@@ -407,103 +444,217 @@ def display_user_guide() -> None:
             )
 
 
+def display_basic_summary(results) -> None:
+    profit = (results["strategy_return_usd"] > 0).mean()
+    buy = (results["levels_triggered"] > 0).mean()
+    open_position = results["position_open_at_horizon"].mean()
+    median_return = results["strategy_return_usd"].median()
+
+    st.subheader("Resultado explicado de forma sencilla")
+    st.write(
+        f"De cada 100 futuros simulados, aproximadamente **{profit * 100:.0f} "
+        f"terminaron con ganancia** y **{buy * 100:.0f} activaron al menos una "
+        f"compra**. En cerca de **{open_position * 100:.0f} de cada 100** quedo "
+        "una inversion abierta al terminar los tres meses."
+    )
+    if median_return >= 0:
+        st.success(
+            f"El resultado central fue una ganancia de {median_return:.2%}. "
+            "Recuerda: es el punto medio de la simulacion, no una promesa."
+        )
+    else:
+        st.warning(
+            f"El resultado central fue una perdida de {abs(median_return):.2%}. "
+            "Esto indica que el escenario configurado merece cautela."
+        )
+
+
 def main() -> None:
     st.title("IVV Tactical Monte Carlo")
     st.caption(
-        "Compra escalonada en caidas, salida en recuperacion y escenarios "
-        "geopoliticos con colas pesadas."
+        "Explora que podria pasar al comprar IVV durante una caida y vender "
+        "despues de una recuperacion."
     )
 
     with st.sidebar:
-        st.header("Mercado")
+        st.header("Tipo de usuario")
+        app_mode = st.radio(
+            "Elige como quieres usar la app",
+            ("Basico", "Avanzado"),
+            help="Basico simplifica las decisiones. Avanzado muestra todos los controles.",
+        )
+
         try:
             default_price = latest_ivv_price()
         except Exception:
             default_price = 600.0
             st.warning("Se usa un precio provisional; revise la conexion.")
 
+        st.header("Mercado")
         initial_price = st.number_input(
-            "Precio inicial IVV (USD)", min_value=1.0, value=default_price, step=1.0
-        )
-        expected_return = st.slider(
-            "Rendimiento anual base", -20.0, 30.0, 8.0, 0.5
-        )
-        volatility = st.slider("Volatilidad anual", 5.0, 60.0, 18.0, 0.5)
-        inflation = st.slider("Inflacion anual EE.UU.", 0.0, 15.0, 3.0, 0.1)
-        interest_rate = st.slider("Tasa de interes de referencia", 0.0, 15.0, 4.0, 0.1)
-        oil_change = st.slider("Cambio esperado petroleo a 3 meses", -40.0, 80.0, 0.0, 1.0)
-        fx_change = st.slider("Cambio esperado USD/MXN a 3 meses", -20.0, 30.0, 0.0, 0.5)
-
-        st.header("Estrategia")
-        levels_text = st.text_input("Caidas para comprar (%)", "3, 6, 9, 12")
-        take_profit = st.slider("Venta sobre costo promedio", 1.0, 20.0, 6.0, 0.5)
-        transaction_cost = st.number_input(
-            "Costo por operacion (pb)", min_value=0.0, value=10.0, step=1.0
+            "Precio actual aproximado de IVV (USD)",
+            min_value=1.0,
+            value=default_price,
+            step=1.0,
+            help="Precio desde el cual comenzara la simulacion.",
         )
 
-        st.header("Simulacion")
-        paths = st.select_slider(
-            "Trayectorias",
-            options=[5_000, 10_000, 20_000, 50_000],
-            value=20_000,
-            help=(
-                "20,000 es adecuado para uso normal. 50,000 requiere mas "
-                "memoria y puede ser lento en servidores gratuitos."
-            ),
-        )
-        student_df = st.slider(
-            "Grados de libertad Student-t", 3.0, 20.0, 5.0, 0.5
-        )
-        seed = st.number_input("Semilla", min_value=0, value=42, step=1)
-        st.header("Calibracion")
-        use_calibration = st.checkbox(
-            "Usar calibracion historica",
-            value=True,
-            help="Reemplaza retorno, volatilidad, colas y escenarios manuales.",
-        )
-        training_years = st.slider(
-            "Ventana historica (anos)", 2, 10, 5, 1
-        )
-        backtest_windows = st.slider(
-            "Ventanas walk-forward", 4, 24, 12, 1
-        )
-        st.header("Trading agresivo")
-        aggressive_capital = st.number_input(
-            "Capital agresivo (USD)",
-            min_value=100.0,
-            value=1_000.0,
-            step=100.0,
-        )
-        aggressive_entry_label = st.radio(
-            "Entrada agresiva",
-            ("Esperar caida", "Comprar hoy"),
-            horizontal=True,
-        )
-        aggressive_drawdown = st.slider(
-            "Caida para entrar", 1.0, 20.0, 4.0, 0.5
-        )
-        aggressive_take_profit = st.slider(
-            "Take-profit agresivo", 1.0, 25.0, 6.0, 0.5
-        )
-        aggressive_stop_loss = st.slider(
-            "Stop-loss agresivo", 1.0, 20.0, 5.0, 0.5
-        )
-        aggressive_trailing = st.slider(
-            "Trailing stop", 0.5, 15.0, 2.5, 0.5
-        )
-        aggressive_max_trades = st.slider(
-            "Maximo de operaciones", 1, 8, 3, 1
-        )
-        run = st.button("Ejecutar simulacion", type="primary", use_container_width=True)
-        run_backtest = st.button(
-            "Ejecutar backtesting",
-            use_container_width=True,
-        )
+        if app_mode == "Basico":
+            profiles = {
+                "Conservador": {
+                    "return": 6.0,
+                    "volatility": 15.0,
+                    "levels": "5, 10, 15",
+                    "take_profit": 5.0,
+                },
+                "Moderado": {
+                    "return": 8.0,
+                    "volatility": 18.0,
+                    "levels": "3, 6, 9, 12",
+                    "take_profit": 6.0,
+                },
+                "Agresivo": {
+                    "return": 10.0,
+                    "volatility": 25.0,
+                    "levels": "2, 4, 6, 8",
+                    "take_profit": 8.0,
+                },
+            }
+            profile_name = st.selectbox(
+                "Que nivel de riesgo quieres explorar?",
+                tuple(profiles),
+                index=1,
+            )
+            profile = profiles[profile_name]
+            st.caption(
+                {
+                    "Conservador": "Espera caidas mayores antes de comprar.",
+                    "Moderado": "Equilibra frecuencia de compra y riesgo.",
+                    "Agresivo": "Compra antes y acepta movimientos mas fuertes.",
+                }[profile_name]
+            )
+            expected_return = profile["return"]
+            volatility = profile["volatility"]
+            levels_text = profile["levels"]
+            take_profit = profile["take_profit"]
+            inflation = 3.0
+            interest_rate = 4.0
+            oil_change = 0.0
+            fx_change = 0.0
+            transaction_cost = 10.0
+            paths = 10_000
+            student_df = 5.0
+            seed = 42
+            use_calibration = False
+            training_years = 5
+            backtest_windows = 12
+            aggressive_capital = 1_000.0
+            aggressive_entry_label = "Esperar caida"
+            aggressive_drawdown = 4.0
+            aggressive_take_profit = 6.0
+            aggressive_stop_loss = 5.0
+            aggressive_trailing = 2.5
+            aggressive_max_trades = 3
+            run = st.button(
+                "Ejecutar simulacion",
+                type="primary",
+                use_container_width=True,
+            )
+            run_backtest = False
+        else:
+            expected_return = st.slider(
+                "Rendimiento anual base", -20.0, 30.0, 8.0, 0.5
+            )
+            volatility = st.slider("Volatilidad anual", 5.0, 60.0, 18.0, 0.5)
+            inflation = st.slider("Inflacion anual EE.UU.", 0.0, 15.0, 3.0, 0.1)
+            interest_rate = st.slider(
+                "Tasa de interes de referencia", 0.0, 15.0, 4.0, 0.1
+            )
+            oil_change = st.slider(
+                "Cambio esperado petroleo a 3 meses", -40.0, 80.0, 0.0, 1.0
+            )
+            fx_change = st.slider(
+                "Cambio esperado USD/MXN a 3 meses", -20.0, 30.0, 0.0, 0.5
+            )
 
-    st.info(
-        "Los pesos de escenario son 15% adverso, 70% central y 15% favorable. "
-        "El intervalo del 90% se reporta entre P5 y P95."
-    )
+            st.header("Estrategia")
+            levels_text = st.text_input("Caidas para comprar (%)", "3, 6, 9, 12")
+            take_profit = st.slider(
+                "Venta sobre costo promedio", 1.0, 20.0, 6.0, 0.5
+            )
+            transaction_cost = st.number_input(
+                "Costo por operacion (pb)", min_value=0.0, value=10.0, step=1.0
+            )
+
+            st.header("Simulacion")
+            paths = st.select_slider(
+                "Trayectorias",
+                options=[5_000, 10_000, 20_000, 50_000],
+                value=20_000,
+                help=(
+                    "20,000 es adecuado para uso normal. 50,000 requiere mas "
+                    "memoria y puede ser lento en servidores gratuitos."
+                ),
+            )
+            student_df = st.slider(
+                "Grados de libertad Student-t", 3.0, 20.0, 5.0, 0.5
+            )
+            seed = st.number_input("Semilla", min_value=0, value=42, step=1)
+            st.header("Calibracion")
+            use_calibration = st.checkbox(
+                "Usar calibracion historica",
+                value=True,
+                help="Reemplaza retorno, volatilidad, colas y escenarios manuales.",
+            )
+            training_years = st.slider("Ventana historica (anos)", 2, 10, 5, 1)
+            backtest_windows = st.slider(
+                "Ventanas walk-forward", 4, 24, 12, 1
+            )
+            st.header("Trading agresivo")
+            aggressive_capital = st.number_input(
+                "Capital agresivo (USD)",
+                min_value=100.0,
+                value=1_000.0,
+                step=100.0,
+            )
+            aggressive_entry_label = st.radio(
+                "Entrada agresiva",
+                ("Esperar caida", "Comprar hoy"),
+                horizontal=True,
+            )
+            aggressive_drawdown = st.slider(
+                "Caida para entrar", 1.0, 20.0, 4.0, 0.5
+            )
+            aggressive_take_profit = st.slider(
+                "Take-profit agresivo", 1.0, 25.0, 6.0, 0.5
+            )
+            aggressive_stop_loss = st.slider(
+                "Stop-loss agresivo", 1.0, 20.0, 5.0, 0.5
+            )
+            aggressive_trailing = st.slider(
+                "Trailing stop", 0.5, 15.0, 2.5, 0.5
+            )
+            aggressive_max_trades = st.slider(
+                "Maximo de operaciones", 1, 8, 3, 1
+            )
+            run = st.button(
+                "Ejecutar simulacion", type="primary", use_container_width=True
+            )
+            run_backtest = st.button(
+                "Ejecutar backtesting",
+                use_container_width=True,
+            )
+
+    if app_mode == "Basico":
+        st.info(
+            "El modo Basico usa valores preparados para que puedas concentrarte "
+            "en entender los resultados. Empieza con el perfil Moderado."
+        )
+    else:
+        st.info(
+            "Los pesos de escenario son 15% adverso, 70% central y 15% favorable. "
+            "El intervalo del 90% se reporta entre P5 y P95."
+        )
     display_user_guide()
 
     try:
@@ -545,12 +696,22 @@ def main() -> None:
             st.error(f"No fue posible ejecutar el backtesting: {error}")
 
     if not run:
-        st.subheader("Que evalua esta demo")
-        st.write(
-            "El motor genera 63 sesiones con volatilidad tipo GARCH, innovaciones "
-            "Student-t y saltos distintos por escenario. En cada trayectoria aplica "
-            "las compras configuradas y compara su resultado con comprar IVV hoy."
-        )
+        if app_mode == "Basico":
+            st.subheader("Que hace esta pagina?")
+            st.write(
+                "Imagina 10,000 futuros posibles para los proximos tres meses. "
+                "En cada futuro, la pagina aplica las mismas reglas de compra y "
+                "venta. Al final cuenta cuantas veces hubo ganancia, perdida o "
+                "una compra que todavia no se habia vendido."
+            )
+        else:
+            st.subheader("Que evalua esta demo")
+            st.write(
+                "El motor genera 63 sesiones con volatilidad tipo GARCH, "
+                "innovaciones Student-t y saltos distintos por escenario. En "
+                "cada trayectoria aplica las compras configuradas y compara su "
+                "resultado con comprar IVV hoy."
+            )
         return
 
     try:
@@ -602,30 +763,48 @@ def main() -> None:
         return
 
     results = output["results"]
-    if calibration is not None:
+    if calibration is not None and app_mode == "Avanzado":
         display_calibration(calibration)
+    metric_labels = (
+        (
+            "Resultado central",
+            "Casos con ganancia",
+            "Casos donde se compro",
+            "Compra sin vender al final",
+        )
+        if app_mode == "Basico"
+        else (
+            "Retorno mediano estrategia USD",
+            "Probabilidad de utilidad",
+            "Probabilidad de activar compra",
+            "Posicion abierta al final",
+        )
+    )
     col1, col2, col3, col4 = st.columns(4)
     col1.metric(
-        "Retorno mediano estrategia USD",
+        metric_labels[0],
         percentage(results["strategy_return_usd"].median()),
     )
     col2.metric(
-        "Probabilidad de utilidad",
+        metric_labels[1],
         percentage((results["strategy_return_usd"] > 0).mean()),
     )
     col3.metric(
-        "Probabilidad de activar compra",
+        metric_labels[2],
         percentage((results["levels_triggered"] > 0).mean()),
     )
     col4.metric(
-        "Posicion abierta al final",
+        metric_labels[3],
         percentage(results["position_open_at_horizon"].mean()),
     )
 
-    st.caption(
-        "Rendimiento anual ajustado por los supuestos macro: "
-        f"{percentage(output['adjusted_expected_return'])}"
-    )
+    if app_mode == "Basico":
+        display_basic_summary(results)
+    else:
+        st.caption(
+            "Rendimiento anual ajustado por los supuestos macro: "
+            f"{percentage(output['adjusted_expected_return'])}"
+        )
 
     left, right = st.columns(2)
     with left:
@@ -739,48 +918,51 @@ def main() -> None:
         )
         show_plotly(fig)
 
-    st.subheader("Percentiles")
-    percentiles = output["percentiles"].copy()
-    for column in percentiles.columns:
-        if column != "final_price":
-            percentiles[column] = percentiles[column].map(percentage)
-        else:
-            percentiles[column] = percentiles[column].map(lambda value: f"${value:,.2f}")
-    st.dataframe(percentiles, use_container_width=True)
+    if app_mode == "Avanzado":
+        st.subheader("Percentiles")
+        percentiles = output["percentiles"].copy()
+        for column in percentiles.columns:
+            if column != "final_price":
+                percentiles[column] = percentiles[column].map(percentage)
+            else:
+                percentiles[column] = percentiles[column].map(
+                    lambda value: f"${value:,.2f}"
+                )
+        st.dataframe(percentiles, use_container_width=True)
 
-    st.subheader("Resultados por escenario")
-    scenarios = output["scenarios"].copy()
-    for column in (
-        "weight",
-        "median_strategy_usd",
-        "probability_profit",
-        "probability_buy",
-        "probability_sale",
-        "probability_open",
-    ):
-        scenarios[column] = scenarios[column].map(percentage)
-    scenarios["median_final_price"] = scenarios["median_final_price"].map(
-        lambda value: f"${value:,.2f}"
-    )
-    st.dataframe(scenarios, use_container_width=True, hide_index=True)
+        st.subheader("Resultados por escenario")
+        scenarios = output["scenarios"].copy()
+        for column in (
+            "weight",
+            "median_strategy_usd",
+            "probability_profit",
+            "probability_buy",
+            "probability_sale",
+            "probability_open",
+        ):
+            scenarios[column] = scenarios[column].map(percentage)
+        scenarios["median_final_price"] = scenarios["median_final_price"].map(
+            lambda value: f"${value:,.2f}"
+        )
+        st.dataframe(scenarios, use_container_width=True, hide_index=True)
 
-    aggressive_strategy = AggressiveTradingStrategy(
-        capital_usd=aggressive_capital,
-        entry_mode=(
-            "immediate"
-            if aggressive_entry_label == "Comprar hoy"
-            else "buy_dip"
-        ),
-        entry_drawdown=aggressive_drawdown / 100,
-        take_profit=aggressive_take_profit / 100,
-        stop_loss=aggressive_stop_loss / 100,
-        trailing_stop=aggressive_trailing / 100,
-        cooldown_days=2,
-        max_trades=aggressive_max_trades,
-        transaction_cost_bps=transaction_cost,
-    )
-    st.divider()
-    display_aggressive_trading(output["prices"], aggressive_strategy)
+        aggressive_strategy = AggressiveTradingStrategy(
+            capital_usd=aggressive_capital,
+            entry_mode=(
+                "immediate"
+                if aggressive_entry_label == "Comprar hoy"
+                else "buy_dip"
+            ),
+            entry_drawdown=aggressive_drawdown / 100,
+            take_profit=aggressive_take_profit / 100,
+            stop_loss=aggressive_stop_loss / 100,
+            trailing_stop=aggressive_trailing / 100,
+            cooldown_days=2,
+            max_trades=aggressive_max_trades,
+            transaction_cost_bps=transaction_cost,
+        )
+        st.divider()
+        display_aggressive_trading(output["prices"], aggressive_strategy)
 
     st.warning(
         "Demo de investigacion, no recomendacion de inversion. Las sensibilidades "
