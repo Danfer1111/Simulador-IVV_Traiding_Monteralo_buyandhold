@@ -334,6 +334,79 @@ def display_aggressive_trading(prices, strategy) -> None:
     )
 
 
+def display_user_guide() -> None:
+    with st.expander("Manual de uso y glosario", expanded=False):
+        manual_tab, glossary_tab = st.tabs(("Manual basico", "Glosario"))
+
+        with manual_tab:
+            st.markdown(
+                """
+                1. **Configure el mercado.** Revise el precio inicial de IVV y
+                   ajuste los supuestos economicos. Si activa la calibracion
+                   historica, el modelo sustituye varios supuestos manuales con
+                   estimaciones obtenidas de datos recientes.
+                2. **Defina la estrategia.** Escriba las caidas que activan cada
+                   compra, separadas por comas. Por ejemplo, `3, 6, 9, 12`
+                   divide el capital en cuatro compras iguales.
+                3. **Ajuste la simulacion.** Use 20,000 trayectorias para una
+                   consulta normal. La misma semilla produce resultados
+                   reproducibles cuando los demas parametros no cambian.
+                4. **Ejecute la simulacion.** El boton principal genera escenarios
+                   de 63 sesiones y compara la estrategia escalonada contra
+                   comprar y mantener IVV desde hoy.
+                5. **Interprete los resultados.** Observe la mediana, la
+                   probabilidad de utilidad, el intervalo P5-P95 y la frecuencia
+                   con la que se activan compras o quedan posiciones abiertas.
+                6. **Pruebe el backtesting.** Este boton evalua ventanas historicas
+                   sin usar informacion futura. Sirve para medir cobertura y
+                   errores del modelo, no para garantizar resultados posteriores.
+                7. **Revise el trading agresivo.** Configure capital, entrada y
+                   salidas. Esta seccion usa el capital completo en cada ciclo y
+                   por ello puede mostrar mayor variacion y riesgo.
+                """
+            )
+            st.info(
+                "Sugerencia: cambie un parametro a la vez y compare los "
+                "resultados con la misma semilla."
+            )
+
+        with glossary_tab:
+            st.markdown(
+                """
+                - **IVV:** ETF que busca seguir el indice S&P 500.
+                - **Trayectoria:** posible evolucion simulada del precio durante
+                  las 63 sesiones del horizonte.
+                - **Monte Carlo:** metodo que repite miles de escenarios
+                  aleatorios para estimar un rango de resultados.
+                - **Retorno mediano:** resultado central; la mitad de las
+                  trayectorias queda por encima y la otra mitad por debajo.
+                - **P5-P95:** intervalo que contiene el 90% central de los
+                  resultados simulados. No es una garantia.
+                - **Volatilidad:** medida de la variacion esperada del precio. Un
+                  valor mayor suele producir rangos de resultados mas amplios.
+                - **Student-t:** distribucion usada para representar movimientos
+                  extremos con mayor frecuencia que una distribucion normal.
+                - **Drawdown o caida:** descenso desde un maximo previo que puede
+                  activar una compra.
+                - **Costo promedio:** precio medio pagado por las compras
+                  ejecutadas.
+                - **Take-profit:** venta al alcanzar una utilidad definida.
+                - **Stop-loss:** venta al alcanzar una perdida maxima definida.
+                - **Trailing stop:** salida que sigue al precio mientras sube y
+                  vende cuando retrocede el porcentaje configurado.
+                - **Buy and hold:** comprar IVV al inicio y mantenerlo hasta el
+                  final del horizonte.
+                - **Backtesting walk-forward:** evaluacion historica que calibra
+                  con datos anteriores y prueba en el periodo siguiente.
+                - **Semilla:** numero que permite repetir la misma secuencia
+                  aleatoria y comparar configuraciones.
+                - **Puntos base (pb):** unidad de costos; 100 pb equivalen a 1%.
+                - **Posicion abierta:** compra que no alcanzo una regla de venta
+                  antes de terminar el horizonte.
+                """
+            )
+
+
 def main() -> None:
     st.title("IVV Tactical Monte Carlo")
     st.caption(
@@ -431,6 +504,7 @@ def main() -> None:
         "Los pesos de escenario son 15% adverso, 70% central y 15% favorable. "
         "El intervalo del 90% se reporta entre P5 y P95."
     )
+    display_user_guide()
 
     try:
         levels = tuple(
