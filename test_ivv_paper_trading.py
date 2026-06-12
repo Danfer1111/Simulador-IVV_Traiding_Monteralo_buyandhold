@@ -118,6 +118,53 @@ class PaperTradingTests(unittest.TestCase):
         )
         self.assertFalse(output["summary"]["open_position"])
 
+    def test_theoretical_trade_buys_low_and_sells_at_a_later_high(self):
+        output = run_paper_trading(
+            np.array([100.0, 90.0, 95.0, 120.0]),
+            self.strategy,
+            PaperTradingConfig(
+                spread_bps=0,
+                slippage_bps=0,
+                transaction_cost_bps=0,
+                intraday_range_bps=0,
+                max_exposure=1.0,
+            ),
+        )
+
+        theoretical = output["theoretical"]
+        self.assertTrue(theoretical["trade_available"])
+        self.assertEqual(theoretical["entry_session"], 1)
+        self.assertEqual(theoretical["exit_session"], 3)
+        self.assertAlmostEqual(
+            theoretical["entry_fill_price"],
+            output["sessions"].loc[1, "low"],
+        )
+        self.assertAlmostEqual(
+            theoretical["exit_fill_price"],
+            output["sessions"].loc[3, "high"],
+        )
+        self.assertGreater(theoretical["profit"], 0)
+
+    def test_theoretical_trade_does_not_buy_and_sell_in_same_session(self):
+        output = run_paper_trading(
+            np.array([100.0, 80.0]),
+            self.strategy,
+            PaperTradingConfig(
+                spread_bps=0,
+                slippage_bps=0,
+                transaction_cost_bps=0,
+                intraday_range_bps=0,
+                max_exposure=1.0,
+            ),
+        )
+
+        theoretical = output["theoretical"]
+        self.assertTrue(theoretical["trade_available"])
+        self.assertGreater(
+            theoretical["exit_session"],
+            theoretical["entry_session"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

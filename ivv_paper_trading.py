@@ -92,6 +92,72 @@ def _session_bars(prices: np.ndarray, intraday_range_bps: float) -> pd.DataFrame
     )
 
 
+def _theoretical_hindsight_trade(
+    bars: pd.DataFrame,
+    config: PaperTradingConfig,
+) -> dict[str, float | int | bool]:
+    """Calcula la mejor compra y venta posterior con conocimiento del futuro."""
+    fee_rate = config.transaction_cost_bps / 10_000
+    half_spread = config.spread_bps / 20_000
+    slippage = config.slippage_bps / 10_000
+    deployable_capital = config.initial_capital_usd * config.max_exposure
+
+    best: dict[str, float | int | bool] = {
+        "trade_available": False,
+        "entry_session": -1,
+        "exit_session": -1,
+        "entry_market_low": np.nan,
+        "exit_market_high": np.nan,
+        "entry_fill_price": np.nan,
+        "exit_fill_price": np.nan,
+        "shares": 0.0,
+        "profit": 0.0,
+        "return": 0.0,
+        "final_equity": config.initial_capital_usd,
+    }
+    best_profit = 0.0
+
+    for entry_session in range(len(bars) - 1):
+        market_low = float(bars.loc[entry_session, "low"])
+        entry_fill = market_low * (1 + half_spread) * (1 + slippage)
+        raw_shares = deployable_capital / (entry_fill * (1 + fee_rate))
+        shares = (
+            raw_shares
+            if config.allow_fractional_shares
+            else float(np.floor(raw_shares))
+        )
+        if shares <= 0:
+            continue
+
+        exit_session = int(
+            bars.loc[entry_session + 1 :, "high"].idxmax()
+        )
+        market_high = float(bars.loc[exit_session, "high"])
+        exit_fill = market_high * (1 - half_spread) * (1 - slippage)
+        purchase_cost = shares * entry_fill * (1 + fee_rate)
+        sale_proceeds = shares * exit_fill * (1 - fee_rate)
+        profit = sale_proceeds - purchase_cost
+        if profit <= best_profit:
+            continue
+
+        best_profit = profit
+        best = {
+            "trade_available": True,
+            "entry_session": entry_session,
+            "exit_session": exit_session,
+            "entry_market_low": market_low,
+            "exit_market_high": market_high,
+            "entry_fill_price": entry_fill,
+            "exit_fill_price": exit_fill,
+            "shares": shares,
+            "profit": profit,
+            "return": profit / config.initial_capital_usd,
+            "final_equity": config.initial_capital_usd + profit,
+        }
+
+    return best
+
+
 def run_paper_trading(
     prices: np.ndarray,
     strategy: PaperTradingStrategy,
@@ -376,6 +442,14 @@ def run_paper_trading(
     sessions = pd.DataFrame(session_rows)
     event_log = pd.DataFrame(events)
     final_equity = float(sessions.iloc[-1]["equity"])
+    theoretical = _theoretical_hindsight_trade(bars, config)
+    actual_profit = final_equity - config.initial_capital_usd
+    theoretical_profit = float(theoretical["profit"])
+    capture_ratio = (
+        max(actual_profit, 0) / theoretical_profit
+        if theoretical_profit > 0
+        else 0.0
+    )
     fills = (
         event_log.loc[event_log["status"] == "Ejecutada"]
         if not event_log.empty
@@ -406,5 +480,13 @@ def run_paper_trading(
         ),
         "risk_halted": halted,
         "open_position": bool(sessions.iloc[-1]["position_shares"] > 0),
+        "actual_profit": actual_profit,
+        "theoretical_profit": theoretical_profit,
+        "capture_ratio": capture_ratio,
     }
-    return {"sessions": sessions, "events": event_log, "summary": summary}
+    return {
+        "sessions": sessions,
+        "events": event_log,
+        "summary": summary,
+        "theoretical": theoretical,
+    }

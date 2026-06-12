@@ -67,9 +67,13 @@ simulados para evaluar:
 - Take-profit, stop-loss y trailing stop.
 - Exposicion maxima y detencion por perdida de cartera.
 - Evolucion del patrimonio y bitacora de cada decision.
+- Comparacion contra una compra en el minimo y venta en el maximo posterior,
+  calculadas retrospectivamente con los mismos costos.
+- Porcentaje del beneficio teorico capturado por las reglas ejecutables.
 
 Este modulo no contiene credenciales, integraciones ni funciones para enviar
-ordenes a un broker. Los datos intradia y las ejecuciones son simulados.
+ordenes a un broker. Los datos intradia y las ejecuciones son simulados. La
+operacion teorica perfecta usa informacion futura y solo funciona como referencia.
 
 ## Siguiente etapa profesional
 

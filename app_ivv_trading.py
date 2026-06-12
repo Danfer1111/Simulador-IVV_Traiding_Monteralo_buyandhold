@@ -232,6 +232,7 @@ def display_paper_trading(
     sessions = output["sessions"]
     events = output["events"]
     summary = output["summary"]
+    theoretical = output["theoretical"]
 
     st.divider()
     st.header("Paper trading operativo")
@@ -262,6 +263,41 @@ def display_paper_trading(
         "Control de riesgo",
         "DETENIDO" if summary["risk_halted"] else "Activo",
     )
+
+    st.subheader("Resultado ejecutable frente al maximo teorico")
+    st.caption(
+        "El maximo teorico usa informacion futura para elegir la mejor compra y "
+        "la mejor venta posterior. Incluye los mismos costos, spread, "
+        "deslizamiento y limite de exposicion, pero no es ejecutable en tiempo real."
+    )
+    comparison1, comparison2, comparison3, comparison4 = st.columns(4)
+    comparison1.metric(
+        "Beneficio ejecutable (USD)",
+        f"USD {summary['actual_profit']:,.2f}",
+    )
+    comparison2.metric(
+        "Beneficio teorico perfecto (USD)",
+        f"USD {summary['theoretical_profit']:,.2f}",
+    )
+    comparison3.metric(
+        "Movimiento capturado (%)",
+        percentage(summary["capture_ratio"]),
+    )
+    if theoretical["trade_available"]:
+        comparison4.metric(
+            "Compra / venta teoricas",
+            f"Sesion {theoretical['entry_session']} / "
+            f"{theoretical['exit_session']}",
+        )
+        st.info(
+            f"Con conocimiento futuro perfecto se compraria cerca de "
+            f"**USD {theoretical['entry_fill_price']:,.2f}** en la sesion "
+            f"**{theoretical['entry_session']}** y se venderia cerca de "
+            f"**USD {theoretical['exit_fill_price']:,.2f}** en la sesion "
+            f"**{theoretical['exit_session']}**."
+        )
+    else:
+        comparison4.metric("Compra / venta teoricas", "Sin operacion rentable")
 
     left, right = st.columns(2)
     with left:
@@ -299,6 +335,32 @@ def display_paper_trading(
                     mode="markers",
                     marker=dict(symbol="triangle-down", size=13, color="#C62828"),
                     name="Venta ejecutada",
+                )
+            )
+        if theoretical["trade_available"]:
+            fig.add_trace(
+                go.Scatter(
+                    x=[
+                        theoretical["entry_session"],
+                        theoretical["exit_session"],
+                    ],
+                    y=[
+                        theoretical["entry_market_low"],
+                        theoretical["exit_market_high"],
+                    ],
+                    mode="markers+lines",
+                    marker=dict(
+                        symbol=["star", "star"],
+                        size=16,
+                        color=["#1565C0", "#8E24AA"],
+                    ),
+                    line=dict(color="rgba(80,80,80,0.45)", dash="dot"),
+                    text=["Compra teorica perfecta", "Venta teorica perfecta"],
+                    hovertemplate=(
+                        "%{text}<br>Sesion %{x}<br>Precio: USD %{y:,.2f}"
+                        "<extra></extra>"
+                    ),
+                    name="Operacion teorica perfecta",
                 )
             )
         fig.update_layout(
@@ -437,8 +499,8 @@ def display_user_guide() -> None:
 
                 Usalo cuando ya conozcas conceptos como volatilidad, percentiles,
                 costos de operacion y stop-loss. Este modo permite modificar todos
-                los supuestos, ejecutar pruebas historicas y configurar trading
-                agresivo.
+                los supuestos, ejecutar pruebas historicas y configurar paper
+                trading operativo.
                 """
             )
 
@@ -538,10 +600,16 @@ def display_user_guide() -> None:
                 - **Perdida maxima:** nivel que cancela ordenes y detiene operaciones.
                 - **Bitacora:** registro de señales, ordenes, ejecuciones, rechazos
                   y controles de riesgo.
+                - **Maximo teorico:** mejor compra y venta posterior identificadas
+                  despues de conocer toda la trayectoria.
+                - **Movimiento capturado:** beneficio ejecutable dividido entre
+                  el beneficio teorico perfecto. Por ejemplo, 60% significa que la
+                  estrategia capturo 60 de cada 100 dolares del beneficio ideal.
 
                 **Importante:** los maximos y minimos intradia tambien son
                 simulados. Esta seccion sirve para probar el proceso operativo,
-                no para demostrar que una orden real se habria ejecutado.
+                no para demostrar que una orden real se habria ejecutado. La
+                operacion teorica perfecta nunca debe interpretarse como señal.
                 """
             )
 
@@ -626,6 +694,10 @@ def display_user_guide() -> None:
                   porcentaje. No representa rendimiento ni probabilidad.
                 - **Posicion abierta:** compra que no alcanzo una regla de venta
                   antes de terminar el horizonte.
+                - **Ganancia teorica perfecta:** beneficio retrospectivo de comprar
+                  en el mejor minimo y vender en el mejor maximo posterior.
+                - **Captura del movimiento:** parte de esa ganancia teorica que
+                  consiguio la estrategia ejecutable.
                 """
             )
 
