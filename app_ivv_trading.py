@@ -207,11 +207,13 @@ def display_backtest(results, summary, confidence) -> None:
     st.dataframe(table, use_container_width=True, hide_index=True)
 
 
-def display_aggressive_trading(prices, strategy) -> None:
+def display_aggressive_trading(prices, strategy, initial_price: float) -> None:
     results = run_aggressive_trading(prices, strategy)
     summary = summarize_aggressive_trading(results)
-    st.header(f"Trading agresivo con USD {strategy.capital_usd:,.0f}")
+    st.header("Trading agresivo")
     st.caption(
+        f"Usa el mismo precio inicial de IVV: USD {initial_price:,.2f}. "
+        f"El capital disponible es USD {strategy.capital_usd:,.2f}. "
         "Opera el capital completo y permite varios ciclos. El maximo teorico "
         "se calcula retrospectivamente; la salida real usa reglas ejecutables."
     )
@@ -406,6 +408,14 @@ def display_user_guide() -> None:
                   significa 6 por cada 100. Un retorno de -4% indica perdida.
                 - **USD:** dolares estadounidenses. Se usa para precios, capital,
                   ganancias y perdidas.
+                - **Precio de IVV:** costo de una participacion. La app usa un
+                  unico precio inicial para la estrategia normal, comprar y
+                  mantener y trading agresivo.
+                - **Capital:** dinero disponible para invertir. No es el precio
+                  de IVV. Por ejemplo, puedes tener USD 1,000 de capital aunque
+                  una participacion de IVV cueste una cantidad diferente.
+                - **Capital final:** valor del efectivo y las participaciones al
+                  terminar la simulacion.
                 - **MXN:** pesos mexicanos. Cuando aparezca, indica que el valor
                   fue convertido usando el tipo de cambio USD/MXN simulado.
                 - **pb (puntos base):** costo porcentual pequeño. `100 pb = 1%`,
@@ -512,6 +522,8 @@ def display_user_guide() -> None:
                   activar una compra; se expresa como porcentaje.
                 - **Costo promedio:** precio medio pagado por las compras
                   ejecutadas.
+                - **Capital disponible:** dinero usado para comprar. No debe
+                  confundirse con el precio de una participacion de IVV.
                 - **Take-profit:** venta al alcanzar una utilidad definida.
                 - **Stop-loss:** venta al alcanzar una perdida maxima definida.
                 - **Trailing stop:** salida que sigue al precio mientras sube y
@@ -905,6 +917,15 @@ def main() -> None:
         return
 
     results = output["results"]
+    simulation_initial_price = float(output["prices"][0, 0])
+    st.metric(
+        "Precio unico de IVV usado en toda la simulacion",
+        f"USD {simulation_initial_price:,.2f}",
+    )
+    st.caption(
+        "Este mismo precio se usa para comprar y mantener, compras escalonadas "
+        "y trading agresivo."
+    )
     if calibration is not None and app_mode == "Avanzado":
         display_calibration(calibration)
     metric_labels = (
@@ -1125,7 +1146,11 @@ def main() -> None:
             transaction_cost_bps=transaction_cost,
         )
         st.divider()
-        display_aggressive_trading(output["prices"], aggressive_strategy)
+        display_aggressive_trading(
+            output["prices"],
+            aggressive_strategy,
+            simulation_initial_price,
+        )
 
     st.warning(
         "Demo de investigacion, no recomendacion de inversion. Las sensibilidades "
