@@ -15,9 +15,6 @@ durante caidas de IVV y venta durante la recuperacion.
 - Comparacion contra comprar y mantener IVV.
 - Calibracion historica de retorno, volatilidad, colas y escenarios.
 - Backtesting walk-forward sin utilizar informacion futura.
-- Seccion independiente de trading agresivo con capital configurable.
-- Entrada inmediata o espera de una caida desde el maximo reciente.
-- Take-profit, stop-loss, trailing stop y multiples ciclos de compra-venta.
 - Paper trading operativo sin conexion a un broker.
 - Ordenes limite con vigencia, bid/ask, deslizamiento y comisiones simuladas.
 - Limites de exposicion y perdida maxima con bitacora de controles.
@@ -57,19 +54,6 @@ La calibracion usa IVV, WTI, Treasury a 10 anos y USD/MXN. Estima:
 
 El walk-forward calibra cada origen exclusivamente con observaciones anteriores,
 simula los siguientes 63 dias y compara P5-P95 con el resultado observado.
-
-## Trading agresivo
-
-La seccion agresiva permite simular USD 1,000 o cualquier otro capital mediante:
-
-- Compra inmediata o entrada al alcanzar un drawdown seleccionado.
-- Inversion del capital completo en cada ciclo.
-- Salida por take-profit, stop-loss o trailing stop.
-- Reentrada despues de un periodo de enfriamiento.
-- Comparacion entre el beneficio realizado y el maximo teorico posterior.
-
-El dia de maximo teorico se conoce unicamente de forma retrospectiva. No se usa
-como regla de operacion ni se presenta como una prediccion exacta.
 
 ## Paper trading operativo
 

@@ -16,13 +16,10 @@ from ivv_calibration_backtest import (
     run_walk_forward_backtest,
 )
 from ivv_montecarlo_engine import (
-    AggressiveTradingStrategy,
     MarketAssumptions,
     SimulationConfig,
     TradingStrategy,
-    run_aggressive_trading,
     run_simulation,
-    summarize_aggressive_trading,
 )
 from ivv_paper_trading import (
     PaperTradingConfig,
@@ -210,150 +207,6 @@ def display_backtest(results, summary, confidence) -> None:
     for column in ("Retorno estrategia (%)", "Retorno comprar y mantener (%)"):
         table[column] = table[column].map(percentage)
     st.dataframe(table, use_container_width=True, hide_index=True)
-
-
-def display_aggressive_trading(prices, strategy, initial_price: float) -> None:
-    results = run_aggressive_trading(prices, strategy)
-    summary = summarize_aggressive_trading(results)
-    st.header("Trading agresivo")
-    st.caption(
-        f"Usa el mismo precio inicial de IVV: USD {initial_price:,.2f}. "
-        f"El capital disponible es USD {strategy.capital_usd:,.2f}. "
-        "Opera el capital completo y permite varios ciclos. El maximo teorico "
-        "se calcula retrospectivamente; la salida real usa reglas ejecutables."
-    )
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric(
-        "Capital final mediano",
-        f"USD {summary['median_final_capital']:,.2f}",
-        f"USD {summary['median_profit']:,.2f}",
-    )
-    col2.metric(
-        "Probabilidad de utilidad",
-        percentage(summary["probability_profit"]),
-    )
-    col3.metric(
-        "Probabilidad de operar",
-        percentage(summary["probability_trade"]),
-    )
-    col4.metric(
-        "Posicion abierta al final",
-        percentage(summary["probability_open"]),
-    )
-
-    timing1, timing2, timing3, timing4 = st.columns(4)
-    entry_day = summary["median_entry_day"]
-    best_day = summary["median_best_day"]
-    timing1.metric(
-        "Dia mediano de compra",
-        "Sin entrada" if np.isnan(entry_day) else f"Sesion {entry_day:.0f}",
-    )
-    timing2.metric(
-        "Dia mediano del mejor precio",
-        "Sin entrada" if np.isnan(best_day) else f"Sesion {best_day:.0f}",
-    )
-    timing3.metric(
-        "Beneficio maximo teorico mediano",
-        f"USD {summary['median_theoretical_max_profit']:,.2f}",
-    )
-    timing4.metric(
-        "Captura mediana del maximo",
-        percentage(summary["median_capture_ratio"]),
-    )
-
-    left, right = st.columns(2)
-    with left:
-        st.subheader("Capital final simulado")
-        fig = go.Figure()
-        fig.add_trace(
-            go.Histogram(
-                x=results["final_capital"],
-                nbinsx=70,
-                marker_color="#8E24AA",
-                opacity=0.78,
-                name="Capital final",
-                hovertemplate="Capital: USD %{x:,.2f}<br>Frecuencia: %{y}<extra></extra>",
-            )
-        )
-        fig.add_vline(
-            x=strategy.capital_usd,
-            line_color="#222222",
-            annotation_text="Capital inicial",
-        )
-        fig.add_vline(
-            x=summary["median_final_capital"],
-            line_color="#174A8B",
-            line_width=2,
-            annotation_text="Mediana",
-        )
-        fig.update_layout(
-            xaxis_title="Capital final (USD)",
-            yaxis_title="Trayectorias",
-        )
-        show_plotly(fig)
-
-    with right:
-        st.subheader("Momento de entrada y mejor precio")
-        traded = results.loc[results["traded"]]
-        fig = go.Figure()
-        if traded.empty:
-            fig.add_annotation(
-                text="No se activaron compras",
-                x=0.5,
-                y=0.5,
-                xref="paper",
-                yref="paper",
-                showarrow=False,
-            )
-        else:
-            fig.add_trace(
-                go.Histogram(
-                    x=traded["first_entry_day"],
-                    nbinsx=20,
-                    opacity=0.65,
-                    name="Compra",
-                    marker_color="#F26A21",
-                )
-            )
-            fig.add_trace(
-                go.Histogram(
-                    x=traded["best_day_after_entry"],
-                    nbinsx=20,
-                    opacity=0.45,
-                    name="Maximo posterior",
-                    marker_color="#2E7D32",
-                )
-            )
-        fig.update_layout(
-            barmode="overlay",
-            xaxis_title="Sesion dentro de los proximos 3 meses",
-            yaxis_title="Trayectorias",
-        )
-        show_plotly(fig)
-
-    st.write(
-        f"Intervalo del 90% para el capital final: "
-        f"**USD {summary['p05_final_capital']:,.2f} a "
-        f"USD {summary['p95_final_capital']:,.2f}**. "
-        f"Promedio de operaciones iniciadas: **{summary['mean_trades']:.2f}**."
-    )
-
-    exit_counts = results[
-        ["take_profit_exits", "stop_loss_exits", "trailing_exits"]
-    ].sum()
-    exit_table = exit_counts.rename(
-        {
-            "take_profit_exits": "Take-profit",
-            "stop_loss_exits": "Stop-loss",
-            "trailing_exits": "Trailing stop",
-        }
-    ).rename("Cantidad de salidas")
-    st.dataframe(exit_table.to_frame(), use_container_width=True)
-    st.warning(
-        "El dia del maximo posterior no es una senal disponible en tiempo real. "
-        "Sirve para medir cuanto potencial dejo sin capturar la regla de salida."
-    )
 
 
 def select_operational_path(prices: np.ndarray, path_label: str) -> np.ndarray:
@@ -605,7 +458,7 @@ def display_user_guide() -> None:
                   ganancias y perdidas.
                 - **Precio de IVV:** costo de una participacion. La app usa un
                   unico precio inicial para la estrategia normal, comprar y
-                  mantener y trading agresivo.
+                  mantener y paper trading.
                 - **Capital:** dinero disponible para invertir. No es el precio
                   de IVV. Por ejemplo, puedes tener USD 1,000 de capital aunque
                   una participacion de IVV cueste una cantidad diferente.
@@ -647,13 +500,14 @@ def display_user_guide() -> None:
                 - **Costo por operacion (pb):** comision o friccion aplicada a
                   cada compra y venta.
 
-                **Trading agresivo**
+                **Paper trading**
 
                 - **Capital (USD):** dinero inicial simulado.
                 - **Caida, take-profit, stop-loss y trailing stop (%):** todos son
                   porcentajes respecto al precio de entrada o al maximo alcanzado.
-                - **Maximo de operaciones:** cantidad de ciclos de compra y venta;
-                  no es dinero ni porcentaje.
+                - **Exposicion maxima (%):** parte del capital que puede quedar
+                  invertida al mismo tiempo.
+                - **Perdida maxima (%):** nivel que detiene nuevas operaciones.
                 """
             )
 
@@ -880,13 +734,6 @@ def main() -> None:
             use_calibration = False
             training_years = 5
             backtest_windows = 12
-            aggressive_capital = 1_000.0
-            aggressive_entry_label = "Esperar caida"
-            aggressive_drawdown = 4.0
-            aggressive_take_profit = 6.0
-            aggressive_stop_loss = 5.0
-            aggressive_trailing = 2.5
-            aggressive_max_trades = 3
             paper_enabled = False
             paper_path_label = "Mediana (P50)"
             paper_capital = 10_000.0
@@ -1004,33 +851,6 @@ def main() -> None:
             )
             backtest_windows = st.slider(
                 "Ventanas walk-forward (cantidad)", 4, 24, 12, 1
-            )
-            st.header("Trading agresivo")
-            aggressive_capital = st.number_input(
-                "Capital agresivo (USD)",
-                min_value=100.0,
-                value=1_000.0,
-                step=100.0,
-            )
-            aggressive_entry_label = st.radio(
-                "Entrada agresiva",
-                ("Esperar caida", "Comprar hoy"),
-                horizontal=True,
-            )
-            aggressive_drawdown = st.slider(
-                "Caida para entrar (%)", 1.0, 20.0, 4.0, 0.5
-            )
-            aggressive_take_profit = st.slider(
-                "Take-profit agresivo (%)", 1.0, 25.0, 6.0, 0.5
-            )
-            aggressive_stop_loss = st.slider(
-                "Stop-loss agresivo (%)", 1.0, 20.0, 5.0, 0.5
-            )
-            aggressive_trailing = st.slider(
-                "Trailing stop (%)", 0.5, 15.0, 2.5, 0.5
-            )
-            aggressive_max_trades = st.slider(
-                "Maximo de operaciones (cantidad)", 1, 8, 3, 1
             )
             st.header("Paper trading operativo")
             paper_enabled = st.checkbox(
@@ -1211,7 +1031,7 @@ def main() -> None:
     )
     st.caption(
         "Este mismo precio se usa para comprar y mantener, compras escalonadas "
-        "y trading agresivo."
+        "y paper trading."
     )
     if calibration is not None and app_mode == "Avanzado":
         display_calibration(calibration)
@@ -1416,28 +1236,6 @@ def main() -> None:
             }
         )
         st.dataframe(scenarios, use_container_width=True, hide_index=True)
-
-        aggressive_strategy = AggressiveTradingStrategy(
-            capital_usd=aggressive_capital,
-            entry_mode=(
-                "immediate"
-                if aggressive_entry_label == "Comprar hoy"
-                else "buy_dip"
-            ),
-            entry_drawdown=aggressive_drawdown / 100,
-            take_profit=aggressive_take_profit / 100,
-            stop_loss=aggressive_stop_loss / 100,
-            trailing_stop=aggressive_trailing / 100,
-            cooldown_days=2,
-            max_trades=aggressive_max_trades,
-            transaction_cost_bps=transaction_cost,
-        )
-        st.divider()
-        display_aggressive_trading(
-            output["prices"],
-            aggressive_strategy,
-            simulation_initial_price,
-        )
 
         if paper_enabled:
             paper_allocation = paper_max_exposure / 100 / len(levels)

@@ -3,13 +3,10 @@ import unittest
 import numpy as np
 
 from ivv_montecarlo_engine import (
-    AggressiveTradingStrategy,
     MarketAssumptions,
     SimulationConfig,
     TradingStrategy,
-    run_aggressive_trading,
     run_simulation,
-    summarize_aggressive_trading,
 )
 
 
@@ -48,44 +45,6 @@ class MonteCarloEngineTests(unittest.TestCase):
         values = output["percentiles"]["strategy_return_usd"].to_numpy()
 
         self.assertTrue(np.all(np.diff(values) >= 0))
-
-    def test_aggressive_immediate_entry_tracks_future_maximum(self):
-        prices = np.array(
-            [
-                [100.0, 96.0, 104.0, 110.0, 107.0],
-                [100.0, 102.0, 99.0, 97.0, 95.0],
-            ]
-        )
-        strategy = AggressiveTradingStrategy(
-            capital_usd=1_000,
-            entry_mode="immediate",
-            take_profit=0.50,
-            stop_loss=0.50,
-            trailing_stop=0.50,
-            max_trades=1,
-            transaction_cost_bps=0,
-        )
-        results = run_aggressive_trading(prices, strategy)
-
-        self.assertTrue((results["first_entry_day"] == 0).all())
-        self.assertEqual(results.loc[0, "best_day_after_entry"], 3)
-        self.assertAlmostEqual(results.loc[0, "theoretical_max_value"], 1_100)
-
-    def test_aggressive_buy_dip_can_remain_in_cash(self):
-        prices = np.array([[100.0, 101.0, 102.0, 103.0]])
-        results = run_aggressive_trading(
-            prices,
-            AggressiveTradingStrategy(
-                entry_mode="buy_dip",
-                entry_drawdown=0.05,
-            ),
-        )
-        summary = summarize_aggressive_trading(results)
-
-        self.assertFalse(results.loc[0, "traded"])
-        self.assertEqual(results.loc[0, "final_capital"], 1_000)
-        self.assertEqual(summary["probability_trade"], 0.0)
-
 
 if __name__ == "__main__":
     unittest.main()
