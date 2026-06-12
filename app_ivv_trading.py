@@ -24,6 +24,11 @@ from ivv_montecarlo_engine import (
     run_simulation,
     summarize_aggressive_trading,
 )
+from ivv_paper_trading import (
+    PaperTradingConfig,
+    PaperTradingStrategy,
+    run_paper_trading,
+)
 
 
 st.set_page_config(
@@ -351,12 +356,202 @@ def display_aggressive_trading(prices, strategy, initial_price: float) -> None:
     )
 
 
+def select_operational_path(prices: np.ndarray, path_label: str) -> np.ndarray:
+    target_quantile = {
+        "Adversa (P10)": 0.10,
+        "Mediana (P50)": 0.50,
+        "Favorable (P90)": 0.90,
+    }[path_label]
+    final_prices = prices[:, -1]
+    target = np.quantile(final_prices, target_quantile)
+    path_index = int(np.argmin(np.abs(final_prices - target)))
+    return prices[path_index].copy()
+
+
+def display_paper_trading(
+    prices: np.ndarray,
+    strategy: PaperTradingStrategy,
+    config: PaperTradingConfig,
+    path_label: str,
+) -> None:
+    operational_prices = select_operational_path(prices, path_label)
+    output = run_paper_trading(operational_prices, strategy, config)
+    sessions = output["sessions"]
+    events = output["events"]
+    summary = output["summary"]
+
+    st.divider()
+    st.header("Paper trading operativo")
+    st.warning(
+        "Entorno 100% simulado: no solicita credenciales, no se conecta a un "
+        "broker y no puede enviar ordenes reales."
+    )
+    st.caption(
+        f"Trayectoria utilizada: {path_label}. Cada orden se evalua con apertura, "
+        "maximo, minimo, bid, ask, vigencia, costos y deslizamiento simulados."
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Capital inicial (USD)", f"USD {summary['initial_capital']:,.2f}")
+    col2.metric(
+        "Patrimonio final (USD)",
+        f"USD {summary['final_equity']:,.2f}",
+        percentage(summary["return"]),
+    )
+    col3.metric("Maxima caida de patrimonio (%)", percentage(summary["max_drawdown"]))
+    col4.metric("Ordenes ejecutadas (cantidad)", summary["orders_filled"])
+
+    status1, status2, status3, status4 = st.columns(4)
+    status1.metric("Ordenes creadas", summary["orders_created"])
+    status2.metric("Ordenes vencidas", summary["orders_expired"])
+    status3.metric("Ordenes rechazadas", summary["orders_rejected"])
+    status4.metric(
+        "Control de riesgo",
+        "DETENIDO" if summary["risk_halted"] else "Activo",
+    )
+
+    left, right = st.columns(2)
+    with left:
+        fig = go.Figure()
+        fig.add_trace(
+            go.Candlestick(
+                x=sessions["session"],
+                open=sessions["open"],
+                high=sessions["high"],
+                low=sessions["low"],
+                close=sessions["close"],
+                name="IVV simulado",
+            )
+        )
+        if not events.empty:
+            purchases = events.loc[
+                (events["side"] == "Compra") & (events["status"] == "Ejecutada")
+            ]
+            sales = events.loc[
+                (events["side"] == "Venta") & (events["status"] == "Ejecutada")
+            ]
+            fig.add_trace(
+                go.Scatter(
+                    x=purchases["session"],
+                    y=purchases["fill_price"],
+                    mode="markers",
+                    marker=dict(symbol="triangle-up", size=13, color="#2E7D32"),
+                    name="Compra ejecutada",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=sales["session"],
+                    y=sales["fill_price"],
+                    mode="markers",
+                    marker=dict(symbol="triangle-down", size=13, color="#C62828"),
+                    name="Venta ejecutada",
+                )
+            )
+        fig.update_layout(
+            title="Precio y ejecuciones simuladas",
+            xaxis_title="Sesion",
+            yaxis_title="IVV (USD)",
+            xaxis_rangeslider_visible=False,
+        )
+        show_plotly(fig)
+
+    with right:
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=sessions["session"],
+                y=sessions["equity"],
+                mode="lines",
+                line=dict(color="#174A8B", width=3),
+                name="Patrimonio",
+                hovertemplate="Patrimonio: USD %{y:,.2f}<extra></extra>",
+            )
+        )
+        loss_limit = config.initial_capital_usd * (1 - config.max_portfolio_loss)
+        fig.add_hline(
+            y=loss_limit,
+            line_color="#C62828",
+            line_dash="dash",
+            annotation_text="Limite de perdida",
+        )
+        fig.update_layout(
+            title="Patrimonio y limite de riesgo",
+            xaxis_title="Sesion",
+            yaxis_title="Patrimonio (USD)",
+        )
+        show_plotly(fig)
+
+    st.subheader("Bitacora de ordenes y controles")
+    if events.empty:
+        st.info("La trayectoria no genero señales ni ordenes.")
+    else:
+        event_table = events.copy()
+        event_table = event_table.rename(
+            columns={
+                "session": "Sesion",
+                "event": "Evento",
+                "side": "Lado",
+                "status": "Estado",
+                "reason": "Motivo",
+                "limit_price": "Precio limite (USD)",
+                "fill_price": "Precio ejecutado (USD)",
+                "quantity": "Participaciones",
+                "cash": "Efectivo (USD)",
+                "position_shares": "Posicion (participaciones)",
+                "equity": "Patrimonio (USD)",
+            }
+        )
+        st.dataframe(
+            event_table,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Precio limite (USD)": st.column_config.NumberColumn(format="%.2f"),
+                "Precio ejecutado (USD)": st.column_config.NumberColumn(format="%.2f"),
+                "Participaciones": st.column_config.NumberColumn(format="%.4f"),
+                "Efectivo (USD)": st.column_config.NumberColumn(format="%.2f"),
+                "Posicion (participaciones)": st.column_config.NumberColumn(
+                    format="%.4f"
+                ),
+                "Patrimonio (USD)": st.column_config.NumberColumn(format="%.2f"),
+            },
+        )
+
+    with st.expander("Ver estado de cada sesion"):
+        session_table = sessions.rename(
+            columns={
+                "session": "Sesion",
+                "open": "Apertura (USD)",
+                "high": "Maximo (USD)",
+                "low": "Minimo (USD)",
+                "close": "Cierre (USD)",
+                "bid": "Bid (USD)",
+                "ask": "Ask (USD)",
+                "drawdown": "Caida desde maximo (%)",
+                "cash": "Efectivo (USD)",
+                "position_shares": "Posicion (participaciones)",
+                "average_cost": "Costo promedio (USD)",
+                "equity": "Patrimonio (USD)",
+                "return": "Retorno (%)",
+                "pending_order": "Orden pendiente",
+                "risk_halted": "Riesgo detenido",
+            }
+        ).copy()
+        session_table["Caida desde maximo (%)"] = session_table[
+            "Caida desde maximo (%)"
+        ].map(percentage)
+        session_table["Retorno (%)"] = session_table["Retorno (%)"].map(percentage)
+        st.dataframe(session_table, use_container_width=True, hide_index=True)
+
+
 def display_user_guide() -> None:
     with st.expander("Manual de uso y glosario", expanded=False):
-        start_tab, advanced_tab, results_tab, glossary_tab = st.tabs(
+        start_tab, advanced_tab, paper_tab, results_tab, glossary_tab = st.tabs(
             (
                 "Empieza aqui",
                 "Modo avanzado",
+                "Paper trading",
                 "Como leer los resultados",
                 "Glosario",
             )
@@ -459,6 +654,40 @@ def display_user_guide() -> None:
                   porcentajes respecto al precio de entrada o al maximo alcanzado.
                 - **Maximo de operaciones:** cantidad de ciclos de compra y venta;
                   no es dinero ni porcentaje.
+                """
+            )
+
+        with paper_tab:
+            st.markdown(
+                """
+                **Que hace esta seccion**
+
+                El paper trading toma una sola trayectoria del Monte Carlo y la
+                recorre como si fueran sesiones de mercado. No usa dinero real.
+
+                1. Selecciona una trayectoria adversa, mediana o favorable.
+                2. Cuando se alcanza una caida configurada, crea una orden limite.
+                3. La orden solo se ejecuta si el minimo de una sesion posterior
+                   alcanza el precio limite.
+                4. Si no se ejecuta dentro de su vigencia, la orden vence.
+                5. Las ventas siguen take-profit, stop-loss y trailing stop.
+                6. Los controles pueden rechazar ordenes o detener el sistema.
+
+                **Elementos realistas incluidos**
+
+                - **Bid/ask:** diferencia simulada entre precio comprador y vendedor.
+                - **Deslizamiento:** diferencia posible entre el precio esperado y
+                  el precio ejecutado.
+                - **Comision:** costo aplicado al comprar y vender.
+                - **Vigencia:** numero de sesiones que una orden puede esperar.
+                - **Exposicion maxima:** porcentaje maximo del capital invertido.
+                - **Perdida maxima:** nivel que cancela ordenes y detiene operaciones.
+                - **Bitacora:** registro de señales, ordenes, ejecuciones, rechazos
+                  y controles de riesgo.
+
+                **Importante:** los maximos y minimos intradia tambien son
+                simulados. Esta seccion sirve para probar el proceso operativo,
+                no para demostrar que una orden real se habria ejecutado.
                 """
             )
 
@@ -658,6 +887,18 @@ def main() -> None:
             aggressive_stop_loss = 5.0
             aggressive_trailing = 2.5
             aggressive_max_trades = 3
+            paper_enabled = False
+            paper_path_label = "Mediana (P50)"
+            paper_capital = 10_000.0
+            paper_max_exposure = 80.0
+            paper_max_loss = 10.0
+            paper_order_expiry = 2
+            paper_limit_offset = 5.0
+            paper_spread = 4.0
+            paper_slippage = 2.0
+            paper_stop_loss = 5.0
+            paper_trailing_stop = 3.0
+            paper_fractional = True
             run = st.button(
                 "Ejecutar simulacion",
                 type="primary",
@@ -790,6 +1031,52 @@ def main() -> None:
             )
             aggressive_max_trades = st.slider(
                 "Maximo de operaciones (cantidad)", 1, 8, 3, 1
+            )
+            st.header("Paper trading operativo")
+            paper_enabled = st.checkbox(
+                "Simular operacion con reglas reales",
+                value=True,
+                help="No conecta un broker ni envia ordenes reales.",
+            )
+            paper_path_label = st.selectbox(
+                "Trayectoria operativa",
+                ("Adversa (P10)", "Mediana (P50)", "Favorable (P90)"),
+                index=1,
+                help="Selecciona un futuro representativo para recorrer sesion por sesion.",
+            )
+            paper_capital = st.number_input(
+                "Capital simulado de paper trading (USD)",
+                min_value=100.0,
+                value=10_000.0,
+                step=500.0,
+            )
+            paper_max_exposure = st.slider(
+                "Exposicion maxima del capital (%)", 10.0, 100.0, 80.0, 5.0
+            )
+            paper_max_loss = st.slider(
+                "Perdida maxima antes de detener (%)", 1.0, 30.0, 10.0, 1.0
+            )
+            paper_order_expiry = st.slider(
+                "Vigencia de orden limite (sesiones)", 1, 10, 2, 1
+            )
+            paper_limit_offset = st.slider(
+                "Precio limite debajo del ask (pb)", 0.0, 100.0, 5.0, 1.0
+            )
+            paper_spread = st.slider(
+                "Diferencial bid/ask simulado (pb)", 0.0, 50.0, 4.0, 1.0
+            )
+            paper_slippage = st.slider(
+                "Deslizamiento simulado (pb)", 0.0, 50.0, 2.0, 1.0
+            )
+            paper_stop_loss = st.slider(
+                "Stop-loss de paper trading (%)", 1.0, 20.0, 5.0, 0.5
+            )
+            paper_trailing_stop = st.slider(
+                "Trailing stop de paper trading (%)", 0.5, 15.0, 3.0, 0.5
+            )
+            paper_fractional = st.checkbox(
+                "Permitir participaciones fraccionadas",
+                value=True,
             )
             run = st.button(
                 "Ejecutar simulacion", type="primary", use_container_width=True
@@ -1151,6 +1438,33 @@ def main() -> None:
             aggressive_strategy,
             simulation_initial_price,
         )
+
+        if paper_enabled:
+            paper_allocation = paper_max_exposure / 100 / len(levels)
+            paper_strategy = PaperTradingStrategy(
+                drawdown_levels=levels,
+                allocations=tuple(paper_allocation for _ in levels),
+                take_profit=take_profit / 100,
+                stop_loss=paper_stop_loss / 100,
+                trailing_stop=paper_trailing_stop / 100,
+            )
+            paper_config = PaperTradingConfig(
+                initial_capital_usd=paper_capital,
+                spread_bps=paper_spread,
+                slippage_bps=paper_slippage,
+                transaction_cost_bps=transaction_cost,
+                limit_offset_bps=paper_limit_offset,
+                order_expiry_sessions=paper_order_expiry,
+                max_exposure=paper_max_exposure / 100,
+                max_portfolio_loss=paper_max_loss / 100,
+                allow_fractional_shares=paper_fractional,
+            )
+            display_paper_trading(
+                output["prices"],
+                paper_strategy,
+                paper_config,
+                paper_path_label,
+            )
 
     st.warning(
         "Demo de investigacion, no recomendacion de inversion. Las sensibilidades "

@@ -18,6 +18,9 @@ durante caidas de IVV y venta durante la recuperacion.
 - Seccion independiente de trading agresivo con capital configurable.
 - Entrada inmediata o espera de una caida desde el maximo reciente.
 - Take-profit, stop-loss, trailing stop y multiples ciclos de compra-venta.
+- Paper trading operativo sin conexion a un broker.
+- Ordenes limite con vigencia, bid/ask, deslizamiento y comisiones simuladas.
+- Limites de exposicion y perdida maxima con bitacora de controles.
 - Graficos Plotly interactivos con zoom, hover y descarga.
 
 La app permite alternar entre supuestos manuales y parametros historicamente
@@ -67,6 +70,22 @@ La seccion agresiva permite simular USD 1,000 o cualquier otro capital mediante:
 
 El dia de maximo teorico se conoce unicamente de forma retrospectiva. No se usa
 como regla de operacion ni se presenta como una prediccion exacta.
+
+## Paper trading operativo
+
+La seccion de paper trading recorre una trayectoria adversa, mediana o favorable
+como si fueran sesiones de mercado. Genera apertura, maximo, minimo, bid y ask
+simulados para evaluar:
+
+- Creacion, ejecucion, vencimiento y rechazo de ordenes limite.
+- Participaciones completas o fraccionadas.
+- Costos de operacion y deslizamiento.
+- Take-profit, stop-loss y trailing stop.
+- Exposicion maxima y detencion por perdida de cartera.
+- Evolucion del patrimonio y bitacora de cada decision.
+
+Este modulo no contiene credenciales, integraciones ni funciones para enviar
+ordenes a un broker. Los datos intradia y las ejecuciones son simulados.
 
 ## Siguiente etapa profesional
 
